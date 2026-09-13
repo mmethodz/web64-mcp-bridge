@@ -19,9 +19,9 @@ export function serverFactory(pairing, clientId, knowledge) {
     const server = new McpServer({ name: 'web64-mcp-bridge', version: BRIDGE_VERSION },
       { supportedProtocolVersions: [...MCP_VERSIONS] });
     server.registerTool('web64_connection', {
-      description: 'Request an explicit browser invitation, inspect your own connection, or revoke it. Default is capability-only. project:read requests read-only access; project:write adds editing/local save. build adds builds to read access WITHOUT editing/saving; project:write+build explicitly requests both. Every invitation requires NEW human consent. Never approves its own grant. No Cloud or emulator control.',
+      description: 'Request an explicit browser invitation, inspect your own connection, or revoke it. Default is capability-only. project:read permits read and native table generation; project:write adds editing/local save. build adds builds, never execution. runtime separately permits emulator screen capture, pause/reset and bounded input. Starting the current program requires build+runtime. Combine with project:write only when editing is needed. Every invitation requires NEW human consent. Never approves its own grant. No Cloud.',
       inputSchema: z.object({ action: z.enum(['status', 'begin_pairing', 'disconnect']),
-        scope: z.enum(['capabilities', 'project:read', 'project:write', 'build', 'project:write+build']).optional() }).strict()
+        scope: z.enum(['capabilities', 'project:read', 'project:write', 'build', 'project:write+build', 'runtime', 'build+runtime', 'project:write+runtime', 'project:write+build+runtime']).optional() }).strict()
     }, async ({ action, scope }) => {
       try {
         requireThat(scope === undefined || action === 'begin_pairing', 'invalid_arguments');
@@ -63,6 +63,36 @@ export function serverFactory(pairing, clientId, knowledge) {
         return { ...output(result), ...(!result.ok ? { isError: true } : {}) }; }
       catch (error) { return { ...output({ ok: false, error: { code: knownErrors.has(error.code) ? error.code : 'request_failed' } }), isError: true }; }
     };
+    server.registerTool('web64_runtime', {
+      description: 'Control only the approved tab emulator, requiring runtime consent. status reports state, frames and lastOperation; capture_frame returns an emulator-only PNG image. start_current_build uses normal IDE current-VFS compile/Run (unsaved edits are valid), also requires build. PRG only, no disk/cartridge mounting, audio unlock or Live preference change. stop pauses; reset performs a power reset. Mutations return promptly as operations: poll status or retry SAME operationId and identical input for outcome. Always use current project-read workspace token. Input is up to 32 sequential held keys/joystick controls, total <=120 emulated frames, each automatically released. wait_frames observes >=requested actual presented frames; NOT deterministic cycle-exact stepping. Background/stalled tabs fail after 5s. Avoid concurrent human input; input/running code may change emulated disks. 256 operation IDs per grant; re-pair when exhausted.',
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+      inputSchema: z.discriminatedUnion('action', [
+        z.object({ action: z.enum(['status', 'capture_frame']) }).strict(),
+        z.object({ ...operation, action: z.enum(['start_current_build', 'stop', 'reset']) }).strict(),
+        z.object({ ...operation, action: z.literal('wait_frames'), frames: z.number().int().min(1).max(120) }).strict(),
+        z.object({ ...operation, action: z.literal('input'), steps: z.array(z.object({ type: z.enum(['key', 'joystick']),
+          code: z.string().max(16), port: z.union([z.literal(1), z.literal(2)]).optional(), frames: z.number().int().min(1).max(120) }).strict()).min(1).max(32) }).strict()
+      ])
+    }, async (input, ctx) => {
+      const result = await command('runtime')(input, ctx);
+      const value = result.structuredContent?.value;
+      if (input.action === 'capture_frame' && result.structuredContent?.ok) {
+        if (value?.mimeType !== 'image/png' || typeof value.data !== 'string' || value.data.length > 240000
+          || !/^iVBORw0KGgo[A-Za-z0-9+/]*={0,2}$/.test(value.data))
+          return { ...output({ ok: false, error: { code: 'frame_unavailable' } }), isError: true };
+        const { data, ...metadata } = value;
+        return { content: [{ type: 'image', mimeType: 'image/png', data }, { type: 'text', text: JSON.stringify(metadata) }] };
+      }
+      return result;
+    });
+    server.registerTool('web64_generate_table', {
+      description: 'Use the CONNECTED BROWSER IDE native table/matrix generator, requiring project:read. Call describe first for authoritative presets/options/limits, then generate with kind table or matrix, options.preset and options.path (.c/.h or .asm/.inc). Returns paginated native source and quantization metadata, not a second binary/asset path. No VFS changes, arbitrary formula execution, filesystem or Cloud. Save source via normal project_apply if approved. Numeric range/overflow and 16 KiB data cap are exactly the IDE rules. validation:failed returns the native generator diagnostic. Reuse identical options with nextOffset to read subsequent pages.',
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      inputSchema: z.discriminatedUnion('action', [z.object({ action: z.literal('describe') }).strict(),
+        z.object({ action: z.literal('generate'), kind: z.enum(['table', 'matrix']), options: nativeObject,
+          offset: z.number().int().nonnegative().optional(), limit: z.number().int().min(1).max(24000).optional() }).strict()]
+      )
+    }, command('generate'));
     server.registerTool('web64_project_apply', {
       description: 'Atomically apply one revision-checked native authoring batch. Requires project:write. File records use the published native schemas; generated outputs cannot be written. Build/media replacements must be complete canonical native manifests. Invalid/raced batches change nothing. Same operationId retries return the original outcome. No saving, builds, Cloud or execution.',
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },

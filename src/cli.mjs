@@ -21,7 +21,7 @@ try {
     'allow-local-ide': { type: 'boolean', default: false }, 'no-knowledge-cache': { type: 'boolean', default: false }, help: { type: 'boolean', default: false }
   }, allowPositionals: false });
   if (values.help) {
-    process.stderr.write(`web64-mcp-bridge v${BRIDGE_VERSION} [--transport stdio|http] [--port 8764] [--ide-url URL --allow-local-ide] [--no-knowledge-cache]\nHTTP requires WEB64_MCP_HTTP_CREDENTIALS (see README). Explicit browser consent separately grants current-project reads, native editing/local save and builds. No Cloud or emulator execution.\n`);
+    process.stderr.write(`web64-mcp-bridge v${BRIDGE_VERSION} [--transport stdio|http] [--port 8764] [--ide-url URL --allow-local-ide] [--no-knowledge-cache]\nHTTP requires WEB64_MCP_HTTP_CREDENTIALS (see README). Explicit browser consent separately grants current-project reads, native editing/local save and builds, and optional emulator control/input. Native table generation requires read access. No Cloud.\n`);
   } else {
     requireThat(['stdio', 'http'].includes(values.transport), 'invalid_transport');
     const url = new URL(values['ide-url']);

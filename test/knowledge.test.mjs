@@ -207,7 +207,7 @@ for (const version of ['2026-07-28', '2025-11-25']) {
         versionNegotiation: { mode: version === '2026-07-28' ? { pin: version } : 'legacy' } });
       await client.connect(transport); t.after(() => client.close());
       const tools = (await client.listTools()).tools.map(tool => tool.name);
-      assert.deepEqual(tools, ['web64_connection', 'web64_project_read', 'web64_project_apply', 'web64_project_create', 'web64_project_save', 'web64_operation', 'web64_build', 'web64_project_open', 'web64_project_import', 'web64_transfer', 'web64_knowledge_search', 'web64_knowledge_read']);
+      assert.deepEqual(tools, ['web64_connection', 'web64_project_read', 'web64_runtime', 'web64_generate_table', 'web64_project_apply', 'web64_project_create', 'web64_project_save', 'web64_operation', 'web64_build', 'web64_project_open', 'web64_project_import', 'web64_transfer', 'web64_knowledge_search', 'web64_knowledge_read']);
       assert.equal((await client.listResourceTemplates()).resourceTemplates.length, 2);
       const description = JSON.parse((await client.readResource({ uri: 'web64://knowledge' })).contents[0].text);
       assert.equal(description.binding.resolvedKnowledgeLine, '2.4');

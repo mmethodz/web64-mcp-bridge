@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { WebSocketServer } from 'ws';
 import {
   WIRE_VERSION, LIMITS, CAPABILITIES, hexToken, requireThat, exactKeys,
-  invitationFragment, validateHello, proof, verifyProof, transcript, PROJECT_WIRE_VERSION, AUTHORING_WIRE_VERSION, BUILD_WIRE_VERSION, projectReadRequested
+  invitationFragment, validateHello, proof, verifyProof, transcript, PROJECT_WIRE_VERSION, AUTHORING_WIRE_VERSION, BUILD_WIRE_VERSION, RUNTIME_WIRE_VERSION, projectReadRequested
 } from '@web64/mcp-contract';
 import { validLocalRequest, Budget } from './security.mjs';
 import { validateBrowserCapabilities } from '@web64/mcp-contract/browser-capabilities';
@@ -106,6 +106,7 @@ export async function createPairing({ ideUrl, clients, clock = Date.now }) {
                 requireThat(state.grant.scopes.includes('project:read'), 'scope_denied');
               if (message.result.projectAccess === 'write') requireThat(state.grant.scopes.includes('project:write'), 'scope_denied');
               if (message.result.builds) requireThat(state.grant.scopes.includes('build'), 'scope_denied');
+              if (message.result.emulatorControl) requireThat(state.grant.scopes.includes('runtime'), 'scope_denied');
               if (pending.projectRead && message.result.ok)
                 requireThat(message.result.value.workspaceToken.sessionId === state.grant.sessionId, 'invalid_project_reply');
               pending.resolve(message.result);
@@ -153,15 +154,16 @@ export async function createPairing({ ideUrl, clients, clock = Date.now }) {
   return {
     port, instance, status,
     begin(id, scope = 'capabilities') {
-      requireThat(['capabilities', 'project:read', 'project:write', 'build', 'project:write+build'].includes(scope), 'scope_denied');
+      requireThat(['capabilities', 'project:read', 'project:write', 'build', 'project:write+build', 'runtime', 'build+runtime', 'project:write+runtime', 'project:write+build+runtime'].includes(scope), 'scope_denied');
       const state = stateFor(id); disconnect(state);
-      const builds = ['build', 'project:write+build'].includes(scope), writes = ['project:write', 'project:write+build'].includes(scope);
-      const invitation = { wire: builds ? BUILD_WIRE_VERSION : writes ? AUTHORING_WIRE_VERSION : scope === 'project:read' ? PROJECT_WIRE_VERSION : WIRE_VERSION,
-        ...(scope !== 'capabilities' ? { scopes: ['project:read', ...(writes ? ['project:write'] : []), ...(builds ? ['build'] : [])] } : {}), id: hexToken(), instance, secret: hexToken(), port,
+      const builds = scope.split('+').includes('build'), writes = scope.split('+').includes('project:write'), runtime = scope.split('+').includes('runtime');
+      const invitation = { wire: runtime ? RUNTIME_WIRE_VERSION : builds ? BUILD_WIRE_VERSION : writes ? AUTHORING_WIRE_VERSION : scope === 'project:read' ? PROJECT_WIRE_VERSION : WIRE_VERSION,
+        ...(scope !== 'capabilities' ? { scopes: ['project:read', ...(writes ? ['project:write'] : []), ...(builds ? ['build'] : []), ...(runtime ? ['runtime'] : [])] } : {}), id: hexToken(), instance, secret: hexToken(), port,
         expiresAt: Math.min(clock() + LIMITS.invitationMs, state.client.expiresAt), origin, clientLabel: state.client.label };
       state.invitation = invitation;
       return { url: new URL(ideUrl).href + invitationFragment(invitation), expiresAt: invitation.expiresAt,
-        authority: builds ? `Current working copy read and builds${writes ? ', editing and explicit local save/export' : '; no editing or saving'}. Requires new browser approval. No Cloud or execution.`
+        authority: runtime ? `Current working copy read, emulator screen capture, pause/reset and bounded input${builds ? ', builds and Run' : '; Run requires build too'}${writes ? ', editing/local save' : '; no editing/saving'}. New human approval required. Running code/input may change emulated disks. No Cloud.`
+          : builds ? `Current working copy read and builds${writes ? ', editing and explicit local save/export' : '; no editing or saving'}. Requires new browser approval. No Cloud or execution.`
           : scope === 'project:write' ? 'Current working copy read/edit and explicit local save/export; requires new browser approval. No Cloud, builds or execution.' : scope === 'project:read'
           ? 'Current working copy read only, including unsaved drafts; explicitly open invitation and approve project:read in browser.'
           : 'Capability check only; explicitly open invitation and consent in browser.' };

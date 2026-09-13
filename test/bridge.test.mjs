@@ -32,7 +32,10 @@ async function httpClient(t, fixture, version, index = 0, shapes = []) {
   await client.connect(transport); t.after(() => client.close());
   return client;
 }
-async function peer(t, url, { badProof = false, consent = true, echo = true, capabilities = CAPABILITIES } = {}) {
+async function peer(t, url, { badProof = false, consent = true, echo = true, capabilities = CAPABILITIES, reply } = {}) {
+  // Spawned Node clocks can differ by 1ms on Windows. Model a real invitation
+  // click delay without relaxing the production five-minute expiry validation.
+  await new Promise(resolve => setTimeout(resolve, 10));
   const invitation = parseInvitation(new URL(url).hash, origin);
   const ws = new WebSocket(`ws://127.0.0.1:${invitation.port}/session`, { origin });
   t.after(() => ws.terminate());
@@ -40,7 +43,7 @@ async function peer(t, url, { badProof = false, consent = true, echo = true, cap
   ws.on('message', raw => { const message = JSON.parse(raw); (waiters.shift() ?? (m => messages.push(m)))(message); });
   const next = () => messages.length ? Promise.resolve(messages.shift()) : new Promise(resolve => waiters.push(resolve));
   await once(ws, 'open');
-  const hello = { type: 'hello', wire: 1, id: invitation.id, instance: invitation.instance, clientNonce: hexToken(), sessionId: hexToken() };
+  const hello = { type: 'hello', wire: invitation.wire, id: invitation.id, instance: invitation.instance, clientNonce: hexToken(), sessionId: hexToken() };
   ws.send(JSON.stringify(hello));
   const challenge = await next();
   assert.equal(await verifyProof(invitation.secret, transcript(invitation, hello, challenge, 'bridge'), challenge.proof), true);
@@ -48,12 +51,12 @@ async function peer(t, url, { badProof = false, consent = true, echo = true, cap
   if (badProof) { await once(ws, 'close'); return { invitation, hello }; }
   assert.equal((await next()).type, 'verified');
   if (consent) {
-    ws.send(JSON.stringify({ type: 'consent' }));
+    ws.send(JSON.stringify({ type: 'consent', ...(invitation.scopes ? { scopes: invitation.scopes } : {}) }));
     assert.equal((await next()).type, 'ready');
   }
   if (echo) ws.on('message', raw => {
     const message = JSON.parse(raw);
-    if (message.type === 'request') ws.send(JSON.stringify({ type: 'result', requestId: message.requestId, sessionId: hello.sessionId, result: capabilities }));
+    if (message.type === 'request') ws.send(JSON.stringify({ type: 'result', requestId: message.requestId, sessionId: hello.sessionId, result: reply?.(message) ?? capabilities }));
   });
   return { ws, invitation, hello, next };
 }
@@ -68,6 +71,25 @@ test('credentials are bounded, distinct, expiring and never inferred from loopba
   assert.throws(() => readCredentials(undefined));
   const budget = new Budget(); const release = Array.from({ length: 4 }, () => budget.take());
   assert.throws(() => budget.take()); release.forEach(fn => { fn(); fn(); }); assert.equal(budget.active, 0);
+});
+
+test('runtime wire consent, read-scope isolation, generator routing and MCP PNG image envelope', async t => {
+  const fixture = await setup(t), client = await httpClient(t, fixture, '2026-07-28');
+  let requests = 0;
+  await peer(t, fixture.pairing.begin('a', 'project:read').url, { capabilities: browserCapabilities(null, true),
+    reply: message => { if (message.method !== 'project.command') return; requests++;
+      assert.equal(message.params.action, 'generate'); return { ok: true, value: { authority: 'native fixture' } }; } });
+  const denied = await client.callTool({ name: 'web64_runtime', arguments: { action: 'status' } });
+  assert.equal(denied.structuredContent.error.code, 'scope_denied'); assert.equal(requests, 0);
+  const generated = await client.callTool({ name: 'web64_generate_table', arguments: { action: 'describe' } });
+  assert.equal(generated.structuredContent.value.authority, 'native fixture');
+  await peer(t, fixture.pairing.begin('a', 'build+runtime').url, { capabilities: browserCapabilities(null, true, false, false, true, true),
+    reply: message => message.method === 'project.command' ? { ok: true, value: { mimeType: 'image/png', data: 'iVBORw0KGgo=', width: 1, height: 1 } } : null });
+  assert.equal((await fixture.pairing.capabilities('a')).emulatorControl, true);
+  const image = await client.callTool({ name: 'web64_runtime', arguments: { action: 'capture_frame' } });
+  assert.equal(image.content[0].type, 'image'); assert.equal(image.content[0].mimeType, 'image/png');
+  fixture.pairing.disconnect('a');
+  assert.equal((await client.callTool({ name: 'web64_runtime', arguments: { action: 'status' } })).structuredContent.error.code, 'session_unavailable');
 });
 
 test('authenticated M1 browser echo carries release identity but cannot extend the method set', async t => {
@@ -85,7 +107,7 @@ for (const version of ['2026-07-28', '2025-11-25']) {
   test(`Streamable HTTP ${version}: real SDK client, shared catalog, browser echo and revoke`, async t => {
     const fixture = await setup(t), shapes = [];
     const client = await httpClient(t, fixture, version, 0, shapes);
-    assert.deepEqual((await client.listTools()).tools.map(tool => tool.name), ['web64_connection', 'web64_project_read', 'web64_project_apply', 'web64_project_create', 'web64_project_save', 'web64_operation', 'web64_build', 'web64_project_open', 'web64_project_import', 'web64_transfer']);
+    assert.deepEqual((await client.listTools()).tools.map(tool => tool.name), ['web64_connection', 'web64_project_read', 'web64_runtime', 'web64_generate_table', 'web64_project_apply', 'web64_project_create', 'web64_project_save', 'web64_operation', 'web64_build', 'web64_project_open', 'web64_project_import', 'web64_transfer']);
     const invitation = (await client.callTool({ name: 'web64_connection', arguments: { action: 'begin_pairing' } })).structuredContent;
     await peer(t, invitation.url);
     const result = await client.readResource({ uri: 'web64://connection' });
@@ -100,7 +122,7 @@ for (const version of ['2026-07-28', '2025-11-25']) {
       args: [fileURLToPath(new URL('../src/cli.mjs', import.meta.url)), '--ide-url', `${origin}/ide/`, '--allow-local-ide'], stderr: 'pipe' });
     let stderr = ''; transport.stderr?.on('data', data => { stderr += data; });
     await client.connect(transport); t.after(() => client.close());
-    assert.deepEqual((await client.listTools()).tools.map(tool => tool.name), ['web64_connection', 'web64_project_read', 'web64_project_apply', 'web64_project_create', 'web64_project_save', 'web64_operation', 'web64_build', 'web64_project_open', 'web64_project_import', 'web64_transfer', 'web64_knowledge_search', 'web64_knowledge_read']);
+    assert.deepEqual((await client.listTools()).tools.map(tool => tool.name), ['web64_connection', 'web64_project_read', 'web64_runtime', 'web64_generate_table', 'web64_project_apply', 'web64_project_create', 'web64_project_save', 'web64_operation', 'web64_build', 'web64_project_open', 'web64_project_import', 'web64_transfer', 'web64_knowledge_search', 'web64_knowledge_read']);
     const invitation = (await client.callTool({ name: 'web64_connection', arguments: { action: 'begin_pairing' } })).structuredContent;
     const browser = await peer(t, invitation.url);
     assert.equal((await fetch(`http://127.0.0.1:${browser.invitation.port}/mcp`)).status, 404);
@@ -186,7 +208,7 @@ test('modern HTTP metadata, unknown revision and revoked client credentials fail
   assert.equal(fixture.pairing.status('a').state, 'unpaired');
   assert.equal((await fetch(fixture.url, modernRequest(fixture, 'tools/list'))).status, 401);
   const other = await httpClient(t, fixture, '2026-07-28', 1);
-  assert.equal((await other.listTools()).tools.length, 10);
+  assert.equal((await other.listTools()).tools.length, 12);
 });
 
 test('modern HTTP SSE delivers SDK responses and abort cancels an unfinished browser request', async t => {

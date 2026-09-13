@@ -1,8 +1,9 @@
-# Web64 MCP bridge v0.1.1
+# Web64 MCP bridge v0.1.2
 
-Version **0.1.1** adds guided setup for Codex and Claude, prerequisite and bridge
-startup checks, safe client registration, and a dependency-included setup ZIP.
-The MCP capability contract remains v0.1.0; browser approval is still required.
+Version **0.1.2** adds separately approved emulator capture/control/input and the
+IDE's native table/matrix generator. It retains guided setup for Codex and Claude,
+prerequisite/startup checks, safe registration and a dependency-included setup ZIP.
+The shared contract is v0.1.1 (runtime wire 5); browser approval is still required.
 
 Connect Codex or Claude to the [Web64 IDE](https://web64.nofs.ai/ide/) to read,
 author and build native Web64 projects, and look up SDK documentation and asset
@@ -18,7 +19,7 @@ browser project. You approve that separately in Web64.
 
 ## Easy setup: Codex and Claude
 
-Download the **`web64-mcp-bridge-0.1.1-setup.zip`** asset from
+Download the **`web64-mcp-bridge-0.1.2-setup.zip`** asset from
 [GitHub Releases](https://github.com/mmethodz/web64-mcp-bridge/releases) when
 available, or use the setup ZIP supplied by the maintainer. Extract it into a
 permanent folder you can write to, such as `Documents\Web64-Bridge`, then run setup:
@@ -53,6 +54,67 @@ No shell alias, global npm installation, background service or port configuratio
 is needed. Setup registers local stdio only; capabilities still require your
 explicit approval in Web64. A startup check does not mean the browser is paired.
 Invitations expire after five minutes; ask for another if necessary.
+
+### Visual checks and bounded input (v0.1.2)
+
+Ask your client: **“Pair with Web64 so you can edit, build, run and visually test
+my project. Show me the invitation.”** The client requests
+`project:write+build+runtime`; if editing is unnecessary, use `build+runtime`.
+Open the invitation and explicitly approve the requested emulator access.
+Older read/edit/build connections cannot silently acquire it. The updated Web64
+browser deployment is required; reload/save your work before re-pairing after an update.
+
+`web64_runtime` accepts these actions:
+
+| Action | Meaning |
+| --- | --- |
+| `status` | Runtime state, actual frame counter, and last operation outcome. |
+| `start_current_build` | Normal IDE compile/Run of the current VFS (PRG only); also requires `build`. No Save prerequisite. |
+| `stop` | Pause the emulator; does not destroy it. |
+| `reset` | Power reset to BASIC; running machine state is lost. |
+| `capture_frame` | Current emulator-only PNG, returned as an MCP image. No IDE/source screenshots. |
+| `wait_frames` | Observe at least 1–120 new presented emulator frames. |
+| `input` | Up to 32 sequential held controls, at most 120 frames total; every control is released. |
+
+Mutating actions require `operationId` (UUID) and the current `expected` workspace
+token from `web64_project_read`. They return promptly: poll `status` for
+`lastOperation.state`, or retry the **identical** request with the **same** ID.
+Do not submit a second ID merely because a response was lost. Each grant retains
+up to 256 IDs; re-pair if that limit is reached. Only one MCP runtime operation
+may run at a time, including across clients connected to the same tab.
+
+Input step example: `{"type":"joystick","port":2,"code":"fire","frames":3}`.
+Joystick codes: `up`, `down`, `left`, `right`, `fire`; ports 1 or 2.
+Key codes: `KeyA`–`KeyZ`, `Digit0`–`Digit9`, `SPACE`, `RETURN`, `DEL`, `HOME`,
+`RUNSTOP`, `CURSOR_UP/DOWN/LEFT/RIGHT`, `SHIFT_LEFT/RIGHT`, `F1`–`F8`.
+Sequences are sequential, not chords. Use short holds for typing; keyboard repeat
+remains the C64's behavior. Avoid simultaneous human input during a sequence.
+
+Frame waits use emulator counters, not elapsed milliseconds. They are **not
+cycle-exact stepping**: the returned observed count may exceed the request.
+Keep the tab foreground/visible; a stalled or paused runtime fails rather than
+claiming progress (five-second input/wait deadline). Disconnect releases held
+controls and prevents further commands; already-running code is not rolled back.
+Running code or keyboard commands may modify mounted emulated disks. Audio is
+not unlocked automatically, Live preferences are unchanged, and there is no
+MCP disk/cartridge mount, arbitrary memory access or Cloud operation.
+
+### Native table/matrix generation (v0.1.2)
+
+With `project:read` or broader approval, call `web64_generate_table` with
+`action: "describe"` for the browser's supported presets/options. Then request
+`action: "generate"`, `kind: "table"` or `"matrix"`, and native `options`.
+For example: `{"preset":"sine","path":"wave.inc","name":"wave","count":256,"numericType":"uint8"}`.
+`.c`/`.h` selects C source; `.asm`/`.inc` selects assembler source.
+
+The browser uses the **same generator as the IDE dialog**: wave/easing/reciprocal/
+multiplication tables and 2D/3D/projection/custom numeric matrices, with native
+fixed-point types, clamping/wrapping/error rules and the 16 KiB generated-data cap.
+Large source responses are paged using `nextOffset` (UTF-16 characters). Native
+validation errors are returned explicitly. No JavaScript/formula evaluation,
+automatic file mutation, binary export or new asset format is introduced.
+Apply the returned source through ordinary `web64_project_apply` when editing
+is approved, then use normal native includes/build targets/disk mastering.
 
 ### Client-specific details
 
@@ -113,7 +175,9 @@ maintainers need `zip`; Windows uses the built-in `Compress-Archive` command.
 
 Project access and builds require the corresponding explicit capability grant.
 Builds use the current virtual filesystem: saving first is not required.
-Run/F5 and Run Disk remain user actions; MCP does not run or live-patch the emulator.
+Read/edit/build grants do not run or live-patch the emulator. Separately approved
+`build+runtime` access enables the normal current-program Run path. Run Disk and
+disk/cartridge mounting remain user actions.
 
 Cloud operations and credentials are not exposed. Continue using the ordinary
 Web64 Cloud interface yourself. “Local” describes the bridge process and browser
@@ -129,7 +193,7 @@ is recorded in `package.json`; it is separate from the Web64 IDE version.
 From an empty installation directory, install the maintainer-provided archive:
 
 ```sh
-npm install --omit=dev /path/to/web64-mcp-bridge-0.1.1.tgz
+npm install --omit=dev /path/to/web64-mcp-bridge-0.1.2.tgz
 node node_modules/web64-mcp-bridge/src/cli.mjs --help
 ```
 
