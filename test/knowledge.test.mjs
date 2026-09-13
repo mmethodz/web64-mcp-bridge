@@ -13,6 +13,7 @@ import { knowledgeUri } from '@web64/mcp-contract/knowledge';
 import { browserCapabilities } from '@web64/mcp-contract/browser-capabilities';
 import { hexToken, LIMITS } from '@web64/mcp-contract';
 import { createKnowledgeReader } from '../src/knowledge.mjs';
+import { resolveKnowledgeLine } from '../src/knowledge-lines.mjs';
 import { createPairing } from '../src/pairing.mjs';
 import { startHttp } from '../src/mcp.mjs';
 
@@ -42,6 +43,7 @@ function readerFor(data, override, cache = null) {
       requests.push(url.href);
       assert.equal(options.redirect, 'error'); assert.equal(options.credentials, 'omit');
       assert.equal(options.headers.Authorization, undefined);
+      if (url.pathname.endsWith('/knowledge-lines.json') && !data.files.has(url.pathname)) return new Response('{}', { status: 404 });
       if (override) return override(url, options);
       return new Response(data.files.get(url.pathname), { status: data.files.has(url.pathname) ? 200 : 404,
         headers: { 'Content-Type': 'application/json' } });
@@ -90,7 +92,7 @@ test('paired manifest is validated once per grant while every read still checks 
   assert.equal(calls, 1);
   sessionId = 'second'; await reader.describe(pairing, 'a');
   assert.equal(calls, 2);
-  assert.equal(requests.some(url => url.endsWith('/manifest.json')), false);
+  assert.equal(requests.filter(url => url.endsWith('/manifest.json')).length, 2);
 });
 
 test('disk cache survives reader restart but never substitutes for fresh session validation; corruption refetches', async () => {
@@ -102,7 +104,7 @@ test('disk cache survives reader restart but never substitutes for fresh session
   assert.equal(entries.length, 2); assert.ok(entries.every(name => /\.(catalog|blob)\.[a-f0-9]{64}\.json$/u.test(name)));
   const second = readerFor(data, undefined, createPublicKnowledgeCache({ directory, origin: 'https://web64.nofs.ai' }));
   assert.equal((await second.reader.read(unpaired, 'a', { uri: data.uri })).text, data.text.slice(0, 24000));
-  assert.equal(second.requests.length, 1); assert.match(second.requests[0], /\/manifest\.json$/u);
+  assert.equal(second.requests.length, 2); assert.match(second.requests[1], /\/manifest\.json$/u);
   const offline = readerFor(data, () => { throw Error('offline'); }, cache);
   await assert.rejects(offline.reader.read(unpaired, 'a', { uri: data.uri }), { code: 'knowledge_unavailable' });
   const blobPath = join(directory, entries.find(name => name.includes('.blob.')));
@@ -113,18 +115,23 @@ test('disk cache survives reader restart but never substitutes for fresh session
   assert.ok((await readFile(blobPath, 'utf8')).startsWith('{"text":'));
 });
 
-test('connected knowledge uses the attested immutable release, not latest, and M0 never claims a match', async () => {
+test('hosted knowledge always uses current publication; old browser identities and URI pins do not select historical authoring', async () => {
   const old = fixture('old'), current = fixture('new');
   const data = { files: new Map([...old.files, ...current.files]) };
   const { reader, requests } = readerFor(data);
   let session = 'one';
   const paired = { status: () => ({ state: 'connected', sessionId: session }), capabilities: async () => browserCapabilities(old.manifest) };
-  const found = await reader.search(paired, 'a', { query: 'example_old' });
-  assert.equal(found.release, old.manifest.release); assert.equal(found.binding.connectedReleaseVerified, true);
-  assert.equal(requests.some(url => url.endsWith('/manifest.json')), false);
-  await assert.rejects(reader.read(paired, 'a', { uri: current.uri }), { code: 'knowledge_release_mismatch' });
+  const found = await reader.search(paired, 'a', { query: 'example_new' });
+  assert.equal(found.release, current.manifest.release); assert.equal(found.binding.connectedReleaseVerified, false);
+  assert.equal(found.binding.fallback, true);
+  assert.equal(requests.some(url => url.endsWith('/manifest.json')), true);
+  const redirected = await reader.read(paired, 'a', { uri: old.uri });
+  assert.equal(redirected.uri, current.uri); assert.equal(redirected.binding.fallback, true);
+  const page = await reader.read(paired, 'a', { uri: old.uri, offset: 24000 });
+  assert.equal(page.paginationReset, true); assert.equal(page.offset, 0);
+  assert.equal(page.requestedOffset, 24000); assert.equal(page.text, current.text.slice(0, 24000));
   const legacy = { ...paired, capabilities: async () => browserCapabilities() };
-  await assert.rejects(reader.describe(legacy, 'a'), { code: 'connected_knowledge_unavailable' });
+  assert.equal((await reader.describe(legacy, 'a')).release, current.manifest.release);
   assert.equal((await reader.describe(legacy, 'a', { scope: 'public' })).binding.connectedReleaseVerified, false);
   session = 'two';
   paired.capabilities = async () => { session = 'replaced'; return browserCapabilities(old.manifest); };
@@ -176,6 +183,8 @@ test('cancellation aborts the public request; revoked browser binding cannot fin
 for (const version of ['2026-07-28', '2025-11-25']) {
   test(`real SDK ${version}: knowledge is identical through stdio and authenticated Streamable HTTP`, async t => {
     const data = fixture();
+    data.files.set('/docs/mcp/knowledge-lines.json', JSON.stringify({ schema: 'web64.knowledge-lines', version: 1,
+      latest: '2.4', lines: { '2.4': data.manifest }, incompatibleMajors: [] }));
     const web = createServer((req, res) => {
       const body = data.files.get(req.url);
       res.writeHead(body ? 200 : 404, { 'Content-Type': 'application/json' }); res.end(body || '{}');
@@ -201,6 +210,8 @@ for (const version of ['2026-07-28', '2025-11-25']) {
       assert.deepEqual(tools, ['web64_connection', 'web64_project_read', 'web64_project_apply', 'web64_project_create', 'web64_project_save', 'web64_operation', 'web64_build', 'web64_project_open', 'web64_project_import', 'web64_transfer', 'web64_knowledge_search', 'web64_knowledge_read']);
       assert.equal((await client.listResourceTemplates()).resourceTemplates.length, 2);
       const description = JSON.parse((await client.readResource({ uri: 'web64://knowledge' })).contents[0].text);
+      assert.equal(description.binding.resolvedKnowledgeLine, '2.4');
+      assert.equal(description.binding.selection, 'latest-published');
       const result = await client.callTool({ name: 'web64_knowledge_search', arguments: { query: 'example_one' } });
       assert.equal(result.isError, undefined);
       const uri = result.structuredContent.results[0].uri;
@@ -213,3 +224,56 @@ for (const version of ['2026-07-28', '2025-11-25']) {
     assert.deepEqual(results[0], results[1]);
   });
 }
+
+test('finite compatibility cases: patches share latest line, newer builds fall back, no historical authoring selection', () => {
+  const manifest = fixture().manifest;
+  const index = { schema: 'web64.knowledge-lines', version: 1, latest: '2.4', lines: { '2.4': manifest }, incompatibleMajors: [] };
+  for (const version of ['2.4.0', '2.4.1', '2.4.2', '2.4.99']) {
+    const result = resolveKnowledgeLine(index, version);
+    assert.equal(result.manifest.release, manifest.release); assert.equal(result.fallback, false);
+  }
+  index.latest = '2.5'; index.lines['2.5'] = { ...manifest, web64Version: '2.5.0' };
+  for (const version of ['2.5.0', '2.5.7', '2.6.0', '2.4.1', null, '3.0.0']) {
+    const result = resolveKnowledgeLine(index, version);
+    assert.equal(result.resolvedKnowledgeLine, '2.5');
+    assert.equal(result.fallback, Boolean(version && !version.startsWith('2.5.')));
+  }
+  index.incompatibleMajors = [[2, 3]];
+  assert.throws(() => resolveKnowledgeLine(index, '3.0.0'), { code: 'knowledge_incompatible' });
+});
+
+test('newer connected version and fresh project reuse current indexed hash; revalidation and tampering remain enforced', async () => {
+  const data = fixture();
+  data.files.set('/docs/mcp/knowledge-lines.json', JSON.stringify({ schema: 'web64.knowledge-lines', version: 1,
+    latest: '2.4', lines: { '2.4': data.manifest }, incompatibleMajors: [] }));
+  let epoch = 0;
+  const paired = { status: () => ({ state: 'connected', sessionId: String(epoch) }),
+    capabilities: async () => browserCapabilities({ ...data.manifest, web64Version: '2.6.0', release: 'a'.repeat(64) }) };
+  const { reader, requests } = readerFor(data);
+  const result = await reader.describe(paired, 'a');
+  assert.equal(result.binding.requestedVersion, '2.6.0'); assert.equal(result.binding.fallback, true);
+  assert.equal(result.binding.exactMatch, false); assert.equal(result.release, data.manifest.release);
+  await reader.read(paired, 'a', { uri: data.uri });
+  assert.equal(requests.filter(url => url.endsWith('knowledge-lines.json')).length, 1);
+  epoch++; await reader.describe(paired, 'a');
+  assert.equal(requests.filter(url => url.endsWith('knowledge-lines.json')).length, 2);
+  const fresh = { status: () => ({ state: 'connected', sessionId: 'fresh' }), capabilities: async () => browserCapabilities() };
+  assert.equal((await reader.describe(fresh, 'a')).release, data.manifest.release);
+  const tampered = readerFor(data, url => new Response(url.pathname.endsWith('knowledge-lines.json')
+    ? data.files.get(url.pathname).replace(data.manifest.catalogSha256, '0'.repeat(64)) : data.files.get(url.pathname),
+  { headers: { 'Content-Type': 'application/json' } }));
+  await assert.rejects(tampered.reader.describe(fresh, 'a'), { code: 'knowledge_hash_mismatch' });
+});
+
+test('retired session corpus revalidates latest once and restarts an old page instead of needing historical files', async () => {
+  const old = fixture('old'), current = fixture('new');
+  const files = new Map(old.files);
+  const { reader, requests } = readerFor({ files });
+  await reader.describe(unpaired, 'a'); // Catalog cached, resource not yet fetched.
+  files.clear(); for (const [path, bytes] of current.files) files.set(path, bytes);
+  const result = await reader.read(unpaired, 'a', { uri: old.uri, offset: 24000 });
+  assert.equal(result.uri, current.uri); assert.equal(result.paginationReset, true);
+  assert.equal(result.text, current.text.slice(0, 24000));
+  assert.equal(result.binding.fallback, true);
+  assert.equal(requests.filter(url => url.endsWith('/manifest.json')).length, 2);
+});

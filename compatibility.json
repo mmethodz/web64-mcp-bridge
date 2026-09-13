@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "bridgeVersion": "0.1.0",
+  "bridgeVersion": "0.1.1",
   "contractVersion": "0.1.0",
   "nodeMinimum": "22",
   "mcpProtocolVersions": ["2026-07-28", "2025-11-25"],

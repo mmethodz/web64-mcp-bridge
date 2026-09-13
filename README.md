@@ -1,29 +1,36 @@
-# Web64 MCP bridge v0.1.0
+# Web64 MCP bridge v0.1.1
 
-This separate local package adapts MCP clients to an explicitly paired Web64
-browser tab. It does **not** contain Web64's compiler, project filesystem,
-importers or Cloud credentials. It is not a hosted Web64 service.
+Version **0.1.1** adds guided setup for Codex and Claude, prerequisite and bridge
+startup checks, safe client registration, and a dependency-included setup ZIP.
+The MCP capability contract remains v0.1.0; browser approval is still required.
 
-Supported scope: explicit pairing and disconnect, browser capability/release
-discovery, public SDK/documentation/schema lookup, and separately approved native
-project reads, creation, atomic editing, imports, local save/export and asynchronous
-PRG/Exomizer/D64 build jobs. **M0–M6 verification passed**, including clean-installed
-stdio and authenticated Streamable HTTP clients against the production-bundle IDE
-and human save/reopen/edit/Run Disk checks. Publication and deployment are separate
-maintainer actions; this repository has not been published or pushed.
+Connect Codex or Claude to the [Web64 IDE](https://web64.nofs.ai/ide/) to read,
+author and build native Web64 projects, and look up SDK documentation and asset
+schemas. The bridge runs on your computer; Web64's compiler, project filesystem
+and build system remain in your explicitly paired browser tab.
 
-V1 is local-workspace only. Cloud project listing, remote open/create/save,
-revision operations and credentials are excluded; the user handles Cloud in the
-ordinary IDE. Native project provenance is data, never a Cloud permission grant.
-The current capability contract continues to require `cloudAccess: false`.
+**Download bridge → run setup → choose your MCP client → restart client → ask
+to pair → open the invitation → approve capabilities → done.**
+
+No Web64 source checkout, manual client configuration or continuously open
+terminal is needed. Setup registers the bridge; it does not grant access to a
+browser project. You approve that separately in Web64.
 
 ## Easy setup: Codex and Claude
 
-Download the maintainer-provided **web64-mcp-bridge-0.1.0-setup.zip**, extract it
-into a permanent folder (for example `C:\Tools\Web64`), then run setup:
+Download the **`web64-mcp-bridge-0.1.1-setup.zip`** asset from
+[GitHub Releases](https://github.com/mmethodz/web64-mcp-bridge/releases) when
+available, or use the setup ZIP supplied by the maintainer. Extract it into a
+permanent folder you can write to, such as `Documents\Web64-Bridge`, then run setup:
 
 - **Windows:** double-click `setup.cmd` in the extracted `web64-mcp-bridge` folder.
 - **macOS/Linux:** open a terminal in that folder and run `sh setup.command`.
+
+If no setup ZIP has been attached to a release yet, use **Code → Download ZIP**
+on the [repository page](https://github.com/mmethodz/web64-mcp-bridge), extract it,
+and run the same setup launcher. This source download needs npm and internet
+access to install dependencies; the prepared setup ZIP already includes them.
+Do not run setup inside the ZIP viewer.
 
 Choose **Codex**, **Claude Code**, or **Claude Desktop**. Setup checks Node.js 22+,
 checks the selected client, starts a temporary bridge to verify its MCP handshake
@@ -97,15 +104,32 @@ self-dependency is excluded from the staged package without editing the checkout
 An existing ZIP is never overwritten; move it aside before rebuilding. macOS/Linux
 maintainers need `zip`; Windows uses the built-in `Compress-Archive` command.
 
-## Manual install / start
+## What the bridge can do
 
-Initial release version: **v0.1.0**. M6 external-client verification passed;
-no npm publication or hosted frontend deployment is implied by this version.
+- Look up public SDK documentation, native schemas and project templates.
+- Read the current project, including unsaved virtual sources and asset drafts.
+- Create and edit native projects, import assets, and save/export `.web64proj`.
+- Build PRG, Exomizer and D64 targets through the browser's native build system.
+
+Project access and builds require the corresponding explicit capability grant.
+Builds use the current virtual filesystem: saving first is not required.
+Run/F5 and Run Disk remain user actions; MCP does not run or live-patch the emulator.
+
+Cloud operations and credentials are not exposed. Continue using the ordinary
+Web64 Cloud interface yourself. “Local” describes the bridge process and browser
+working copy, not a requirement to host Web64 locally: the default IDE is
+**https://web64.nofs.ai/ide/**.
+
+## Manual install / start (advanced)
+
+Prefer the setup route above. For manual archive installation, substitute the
+archive filename you downloaded in the commands below. The bridge's own version
+is recorded in `package.json`; it is separate from the Web64 IDE version.
 
 From an empty installation directory, install the maintainer-provided archive:
 
 ```sh
-npm install --omit=dev /path/to/web64-mcp-bridge-0.1.0.tgz
+npm install --omit=dev /path/to/web64-mcp-bridge-0.1.1.tgz
 node node_modules/web64-mcp-bridge/src/cli.mjs --help
 ```
 
@@ -137,7 +161,10 @@ Configure your MCP client to spawn `node` with the absolute path to
 operational messages use stderr. There is no HTTP MCP endpoint in stdio mode.
 `--transport stdio` is equivalent. The process exits when its input ends.
 
-Optional independent local server:
+### Optional Streamable HTTP server (advanced)
+
+Ordinary Codex/Claude setup uses stdio and does not need this section.
+For an independent local server:
 
 ```sh
 node src/cli.mjs --transport http --port 8764
@@ -205,7 +232,7 @@ URL does not automatically receive later commits. No wildcard origin was added.
 
 ### Read-only working copy
 
-With a matching M2 browser build, request an invitation using
+With a compatible Web64 browser build, request an invitation using
 `web64_connection` with `{"action":"begin_pairing","scope":"project:read"}`.
 The user must approve **Allow project read**, which names the current project
 and includes unsaved source/asset drafts. Capability-only invitations remain
@@ -242,7 +269,7 @@ replacement and unresponsive handling have deterministic test authority, not
 a claim of exhaustive manual browser coverage. A read-only grant exposes no
 writes, saves, target builds, previews, Cloud APIs or emulator commands.
 
-### Native authoring (M3/G3 and M4/G4 passed)
+### Native authoring
 
 Request `{"action":"begin_pairing","scope":"project:write"}` and approve
 **Allow project editing** in the selected IDE. This creates a new explicit
@@ -268,9 +295,9 @@ Dirty source/assets are the current VFS and need no save for authoring. MCP edit
 do not run or live-patch the emulator. The user retains the ordinary Live setting
 and explicitly runs the modified program. The hybrid template has passed an
 actual MCP create/human save/native reopen check. G3 and G4 are closed;
-their retained evidence includes native editor/import checks. No published release is claimed.
+their retained evidence includes native editor/import checks.
 
-### Native build jobs (M5/G5 passed; unreleased)
+### Native build jobs
 
 Request pairing with `scope:"build"` for read/build or
 `scope:"project:write+build"` for read/write/build, then explicitly approve in
@@ -313,12 +340,34 @@ matches the development code. Missing production identity fails closed.
 Resource reads also return a bounded first page, never an implicitly complete
 truncated file. Full Markdown retains code examples; SDK headers retain exact source.
 
-Without a paired browser, lookup explicitly reports `public-release` and
-`connectedReleaseVerified: false`. Auto lookup with a compatible paired production
-browser uses that bundle's embedded release, not the host's mutable latest pointer.
-An M0 browser or a Vite/HMR workspace cannot attest a release: auto lookup returns
-`connected_knowledge_unavailable`; explicit `scope: public` remains available
-without claiming to match that tab. No fallback silently substitutes latest.
+Web64's hosted IDE, compiler and SDK are current: lookup always uses the **latest
+published knowledge**, not a historical authoring target selected by project version.
+Knowledge publication is organized by major/minor compatibility line; patch
+metadata alone does not require another serialized corpus. Missing browser
+knowledge metadata, a fresh project or a newer reported version does not block
+lookup. The available publication is returned with honest binding metadata.
+
+The host keeps one current published corpus and at most one replaceable development
+corpus, not an archive of older SDK versions. A production build promotes generated
+knowledge and removes the superseded corpus. If a deployment retires a session's
+hash before a resource is fetched, the bridge revalidates current publication once.
+Integrity errors and offline access still do not permit stale-cache success.
+The host enforces a 64 MiB historical/transient safety ceiling without truncating
+the complete current corpus. Normal retention is stricter: current plus one dev,
+with no historical snapshots retained.
+
+`binding` reports `requestedVersion`, `resolvedKnowledgeLine`, `exactMatch`,
+`fallback`, `contentHash`, `knowledgeReleaseIdentity` and `selection: "latest-published"`.
+`connectedReleaseVerified` is true only when the browser's echoed hash actually
+matches the validated publication. Otherwise the response does not claim an exact
+browser match. An explicitly declared incompatible major boundary still fails
+clearly; none are declared currently. Public scope does not contact the browser.
+
+An old resource URI resolves by resource ID against the session's current corpus,
+returning its actual URI/hash and explicit fallback metadata. If its page offset
+belongs to a different hash, `paginationReset: true` returns the new first page;
+discard previous pages and follow the returned `nextOffset`. A missing resource
+still reports not found rather than inventing equivalent content.
 
 Knowledge requests fetch only `/docs/mcp/` on the configured approved origin.
 There is no arbitrary URL, redirect following, browser-cookie forwarding, arbitrary filesystem
@@ -366,11 +415,12 @@ The default directory on Windows is
 disable disk caching; bounded in-memory reuse remains. No cache directory is
 created until a public knowledge resource is actually cached.
 
-Each logical client session must first validate its release: a paired production
-tab supplies its embedded manifest, or public scope fetches a small HTTPS manifest.
-Subsequent reads remain pinned to that release rather than changing with the host's
-latest pointer. Explicit older-release URIs require their own immutable manifest
-validation. A restarted bridge, new principal, pairing change or explicit
+Each logical client session first fetches the small HTTPS `knowledge-lines.json`
+index and validates its latest line/hash. During host rollout, a missing index
+falls back to the host's current `manifest.json`; invalid data, network errors or
+hash mismatches never permit stale-cache success. Subsequent reads remain pinned
+to that validated hash for consistent pagination. A restarted bridge, new
+principal, pairing change or explicit
 `web64_connection` disconnect requires validation again. In HTTP mode this boundary
 is the authenticated client within the running bridge, **not each POST request**.
 Every asynchronous read still rechecks client/grant identity before returning.
@@ -378,7 +428,7 @@ Public data may be shared across clients; their validated bindings are not share
 
 A new public session cannot treat cached data as current when HTTPS validation
 fails. There is no silent offline/stale fallback. This rule also means a host must
-publish the immutable release manifest alongside each catalog. Cache deletion is
+publish its current index/manifest alongside the complete hashed catalog. Cache deletion is
 safe when the bridge is stopped; the next successful lookup repopulates it. A
 process crash can leave an incomplete `.write-*.tmp` file, ignored on reads and
 outside the committed-entry budget; it can be removed with the stopped cache.
@@ -431,4 +481,7 @@ used Chrome; Edge HTTPS pairing has the earlier M0 evidence, not a duplicate
 full end-to-end application run. This is the verified scope, not an assertion
 that every browser or third-party MCP client has been tested.
 
-This repository has been initialized locally; it has not been published or pushed.
+Setup-specific test results and remaining platform verification limits are recorded
+in [Setup verification](docs/setup-quality-pass.md). In particular, native
+macOS/Linux launcher execution and a real installed Claude Code client remain
+separate verification items; fixture tests are not live-client certification.

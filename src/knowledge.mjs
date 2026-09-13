@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { KNOWLEDGE_LIMITS as LIMITS, knowledgeAssert as check, validateKnowledgeCatalog,
   validateKnowledgeManifest, searchKnowledge, readKnowledgeText, parseKnowledgeUri } from '@web64/mcp-contract/knowledge';
 import { Budget } from './security.mjs';
+import { knowledgeLine, resolveKnowledgeLine } from './knowledge-lines.mjs';
 
 const sha = data => createHash('sha256').update(data).digest('hex');
 const fail = code => Object.assign(new Error(code), { code });
@@ -27,6 +28,7 @@ export function createKnowledgeReader({ ideUrl, allowLocal = false, fetchImpl = 
       combined.throwIfAborted();
       response = await fetchImpl(new URL(path, base), { signal: combined, redirect: 'error', credentials: 'omit',
         headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' } });
+      check(![404, 410].includes(response.status), 'knowledge_snapshot_missing');
       check(response.ok && !response.redirected && response.body, 'knowledge_unavailable');
       check(/^application\/json(?:\s*;|$)/iu.test(response.headers.get('content-type') || ''), 'invalid_knowledge_response');
       const length = response.headers.get('content-length');
@@ -92,43 +94,53 @@ export function createKnowledgeReader({ ideUrl, allowLocal = false, fetchImpl = 
     let session = clients.get(clientId);
     if (!session || session.stamp !== currentStamp) {
       check(clients.has(clientId) || clients.size < 8, 'busy');
-      session = { stamp: currentStamp, browser: null, latest: null, releases: new Map(), pending: false };
+      session = { stamp: currentStamp, echo: null, resolutions: new Map(), pending: false };
       clients.set(clientId, session);
     }
     const connected = scope === 'auto' && state.state === 'connected';
-    let manifest = connected ? session.browser : requestedRelease ? session.releases.get(requestedRelease) : session.latest;
-    if (!manifest) {
+    const key = connected ? 'browser' : 'public';
+    let resolution = session.resolutions.get(key);
+    if (!resolution) {
       // Single validation in flight for a logical client session. Do not let one
       // request's cancellation abort an unrelated caller's shared network work.
       check(!session.pending, 'busy'); session.pending = true;
       try {
-        if (connected) {
-          const echo = await pairing.capabilities(clientId, signal);
-          check(echo.knowledge, 'connected_knowledge_unavailable');
-          manifest = validateKnowledgeManifest(echo.knowledge);
-        } else {
-          check(!requestedRelease || hash.test(requestedRelease));
-          const path = requestedRelease ? `releases/${requestedRelease}/manifest.json` : 'manifest.json';
-          manifest = validateKnowledgeManifest(parse(await download(path, 4096, signal)));
-          check(!requestedRelease || manifest.release === requestedRelease, 'knowledge_release_mismatch');
+        if (connected && !session.echo) session.echo = await pairing.capabilities(clientId, signal);
+        const echo = connected ? session.echo : null;
+        const requestedVersion = echo?.web64Version || echo?.knowledge?.web64Version || null;
+        let manifest;
+        try {
+          const index = parse(await download('knowledge-lines.json', 128 * 1024, signal));
+          manifest = resolveKnowledgeLine(index, requestedVersion).manifest;
+        } catch (error) {
+          if (error.code !== 'knowledge_snapshot_missing') throw error;
+          // Rolling deployment: an origin without the new index still has a
+          // current manifest. Network/integrity failures never use stale cache.
+          manifest = validateKnowledgeManifest(parse(await download('manifest.json', 4096, signal)));
         }
+        await catalogFor({ manifest, signal });
+        const exactHash = Boolean(echo?.knowledge && echo.knowledge.release === manifest.release);
+        const line = knowledgeLine(manifest.web64Version);
+        resolution = { manifest, binding: { authority: connected ? exactHash ? 'connected-browser' : 'compatible-public-release' : 'public-release',
+          connectedReleaseVerified: connected && exactHash, requestedVersion, resolvedKnowledgeLine: line,
+          exactMatch: exactHash || Boolean(requestedVersion && knowledgeLine(requestedVersion) === line),
+          fallback: Boolean(connected && !exactHash), contentHash: manifest.release,
+          knowledgeReleaseIdentity: manifest.release } };
         check(!signal?.aborted, 'request_cancelled');
         check(stamp(pairing.status(clientId)) === currentStamp, 'session_unavailable');
-        if (connected) session.browser = manifest;
-        else {
-          if (!requestedRelease) session.latest = manifest;
-          if (session.releases.size >= 2) session.releases.delete(session.releases.keys().next().value);
-          session.releases.set(manifest.release, manifest);
-        }
+        if (session.resolutions.size >= 3) session.resolutions.delete(session.resolutions.keys().next().value);
+        session.resolutions.set(key, resolution);
       } finally { session.pending = false; }
     }
-    check(!requestedRelease || requestedRelease === manifest.release, 'knowledge_release_mismatch');
-    const catalog = await catalogFor({ manifest, signal });
+    const catalog = await catalogFor({ manifest: resolution.manifest, signal });
     check(stamp(pairing.status(clientId)) === currentStamp, 'session_unavailable');
-    return { catalog, stamp: currentStamp, binding: { authority: connected ? 'connected-browser' : 'public-release',
-      connectedReleaseVerified: connected, origin: ide.origin, validation: 'per-logical-session' } };
+    const requestedHashDiffers = Boolean(requestedRelease && requestedRelease !== catalog.release);
+    return { catalog, stamp: currentStamp, binding: { ...resolution.binding,
+      ...(requestedRelease ? { requestedContentHash: requestedRelease,
+        exactMatch: !requestedHashDiffers, fallback: requestedHashDiffers || resolution.binding.fallback } : {}),
+      origin: ide.origin, validation: 'per-logical-session', selection: 'latest-published' } };
   }
-  async function run(pairing, clientId, options, signal, operation) {
+  async function run(pairing, clientId, options, signal, operation, refreshed = false) {
     const release = budget.take();
     try {
       check(!signal?.aborted, 'request_cancelled');
@@ -138,6 +150,12 @@ export function createKnowledgeReader({ ideUrl, allowLocal = false, fetchImpl = 
       const current = pairing.status(clientId); // Expired/revoked principals cannot finish a request.
       check(stamp(current) === ctx.stamp, 'session_unavailable');
       return { ...result, binding: ctx.binding };
+    } catch (error) {
+      if (error.code !== 'knowledge_snapshot_missing' || refreshed) throw error;
+      // A deployment may retire this session's previously current corpus.
+      // Revalidate current publication once, never serve an offline cached fallback.
+      sessions.get(pairing)?.delete(clientId);
+      return await run(pairing, clientId, options, signal, operation, true);
     } finally { release(); }
   }
   return {
@@ -162,7 +180,7 @@ export function createKnowledgeReader({ ideUrl, allowLocal = false, fetchImpl = 
             check(blob && Object.keys(blob).length === 1 && typeof blob.text === 'string'
               && sha(blob.text) === row.source.contentSha256, 'invalid_knowledge_response');
           };
-          const bytes = await verifiedBytes('blob', row.sha256, `releases/${release}/blobs/${row.sha256}.json`, row.bytes, verify, signal);
+          const bytes = await verifiedBytes('blob', row.sha256, `releases/${catalog.release}/blobs/${row.sha256}.json`, row.bytes, verify, signal);
           const blob = parse(bytes);
           content = blob.text;
           while (blobBytes + bytes.length > 16 * 1024 * 1024 && blobs.size) {
@@ -170,7 +188,10 @@ export function createKnowledgeReader({ ideUrl, allowLocal = false, fetchImpl = 
           }
           if (!blobs.has(row.sha256)) { blobs.set(row.sha256, { text: content, bytes: bytes.length }); blobBytes += bytes.length; }
         }
-        return readKnowledgeText(catalog, row, content, options);
+        // Do not concatenate an old snapshot's first page with a new one's tail.
+        const reset = release !== catalog.release && (options.offset || 0) > 0;
+        return { ...readKnowledgeText(catalog, row, content, reset ? { ...options, offset: 0 } : options),
+          ...(reset ? { paginationReset: true, requestedOffset: options.offset } : {}) };
       });
     }
   };

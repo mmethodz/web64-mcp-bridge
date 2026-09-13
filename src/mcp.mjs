@@ -12,7 +12,7 @@ import { BRIDGE_VERSION } from './version.mjs';
 
 const output = value => ({ content: [{ type: 'text', text: JSON.stringify(value) }], structuredContent: value });
 const knownErrors = new Set([...PROJECT_READ_ERRORS, ...PROJECT_COMMAND_ERRORS, 'session_unavailable', 'session_unresponsive', 'unauthorized', 'request_cancelled', 'busy', 'rate_limited',
-  'invalid_knowledge_request', 'connected_knowledge_unavailable', 'knowledge_release_mismatch', 'knowledge_hash_mismatch',
+  'invalid_knowledge_request', 'connected_knowledge_unavailable', 'knowledge_release_mismatch', 'knowledge_hash_mismatch', 'knowledge_incompatible', 'knowledge_snapshot_missing',
   'knowledge_unavailable', 'knowledge_resource_not_found', 'knowledge_timeout', 'knowledge_too_large', 'invalid_knowledge_response']);
 export function serverFactory(pairing, clientId, knowledge) {
   return () => {
@@ -141,13 +141,13 @@ export function serverFactory(pairing, clientId, knowledge) {
         catch (error) { return { ...output({ ok: false, error: { code: knownErrors.has(error.code) ? error.code : 'request_failed' } }), isError: true }; }
       };
       server.registerTool('web64_knowledge_search', {
-        description: 'Search public Web64 SDK symbols, documentation and native schemas. Auto pins to a connected browser release; without a connection it explicitly identifies public lookup. Public scope never claims to describe a connected tab.',
+        description: 'Search the latest published Web64 SDK, documentation and native schemas. The current public knowledge hash is validated per session. Browser/hash differences are reported explicitly, not used to select historical authoring versions. Public scope never claims a connected-browser match.',
         annotations, inputSchema: z.object({ query: z.string().min(1).max(256),
           kind: z.enum(['sdk', 'docs', 'schemas', 'templates', 'imports']).optional(),
           offset: z.number().int().min(0).default(0), limit: z.number().int().min(1).max(20).default(10), scope, release }).strict()
       }, invoke('search'));
       server.registerTool('web64_knowledge_read', {
-        description: 'Read a versioned public knowledge URI. Large resources return nextOffset in UTF-16 code units; request successive pages instead of assuming the first page is complete.',
+        description: 'Read public knowledge using the current session publication. Old URIs resolve by resource ID with explicit fallback metadata and the actual returned URI/hash. If paginationReset is true, discard earlier pages and restart from this first page. Follow nextOffset in UTF-16 code units.',
         annotations, inputSchema: z.object({ uri: z.string().max(8192), offset: z.number().int().min(0).default(0),
           limit: z.number().int().min(1).max(24000).default(24000), scope }).strict()
       }, invoke('read'));
