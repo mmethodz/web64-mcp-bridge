@@ -12,7 +12,7 @@ test('release identity and CLI guidance match the packaged v0.1.0 contract', asy
   assert.equal(compatibility.bridgeVersion, BRIDGE_VERSION);
   assert.equal(compatibility.contractVersion, '0.1.0');
   assert.deepEqual(pkg.bundleDependencies, ['@web64/mcp-contract']);
-  assert.deepEqual(pkg.files, ['src', 'README.md', 'compatibility.json', 'vendor/web64-mcp-contract-0.1.0.tgz']);
+  assert.deepEqual(pkg.files, ['src', 'setup.mjs', 'setup.cmd', 'setup.command', 'README.md', 'compatibility.json', 'vendor/web64-mcp-contract-0.1.0.tgz']);
   const help = spawnSync(process.execPath, [fileURLToPath(new URL('../src/cli.mjs', import.meta.url)), '--help'], { encoding: 'utf8' });
   assert.equal(help.status, 0, help.stderr); assert.equal(help.stdout, '');
   assert.match(help.stderr, /v0\.1\.0/); assert.match(help.stderr, /editing\/local save and builds/);

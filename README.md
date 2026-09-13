@@ -17,7 +17,87 @@ revision operations and credentials are excluded; the user handles Cloud in the
 ordinary IDE. Native project provenance is data, never a Cloud permission grant.
 The current capability contract continues to require `cloudAccess: false`.
 
-## Install / start
+## Easy setup: Codex and Claude
+
+Download the maintainer-provided **web64-mcp-bridge-0.1.0-setup.zip**, extract it
+into a permanent folder (for example `C:\Tools\Web64`), then run setup:
+
+- **Windows:** double-click `setup.cmd` in the extracted `web64-mcp-bridge` folder.
+- **macOS/Linux:** open a terminal in that folder and run `sh setup.command`.
+
+Choose **Codex**, **Claude Code**, or **Claude Desktop**. Setup checks Node.js 22+,
+checks the selected client, starts a temporary bridge to verify its MCP handshake
+and pairing tool, and registers the bridge. The setup ZIP includes runtime
+dependencies. A source/archive installation can install missing dependencies
+using npm; that step needs internet access. If Node is missing, setup gives the
+[Node.js LTS download](https://nodejs.org/) and tells you to rerun it after installing.
+Install and launch your MCP client once before setup. No administrator account is
+required. Keep the extracted folder where it is: registration points to it.
+
+After **Setup complete**:
+
+1. Fully quit and restart your client (closing only its window may not quit it).
+2. Ask: **“Pair with Web64 so you can edit and build my project. Show me the invitation link.”**
+3. Open the invitation and click **Connect local bridge**.
+4. Accept a browser local-network prompt if shown, then approve **Allow editing and builds**.
+
+The client starts the bridge automatically. You can close the setup window.
+No shell alias, global npm installation, background service or port configuration
+is needed. Setup registers local stdio only; capabilities still require your
+explicit approval in Web64. A startup check does not mean the browser is paired.
+Invitations expire after five minutes; ask for another if necessary.
+
+### Client-specific details
+
+**Codex desktop / CLI / IDE extension:** setup adds `[mcp_servers.web64]` to
+`~/.codex/config.toml` (or the directory selected by `CODEX_HOME`). It preserves
+existing TOML and comments, validates the result, and backs up the old file.
+No separate Codex CLI installation is required for desktop users. Restart Codex
+and check its MCP settings if the tools do not appear.
+[Official Codex MCP configuration](https://developers.openai.com/codex/mcp).
+
+**Claude Code:** setup requires `claude` on PATH and uses its supported
+`claude mcp add --transport stdio --scope user web64 -- ...` command. This makes
+Web64 available across projects. Restart Claude Code and use `/mcp` to check it.
+Existing registrations are left in place; `claude mcp get web64` helps inspect a
+conflict. [Official Claude Code MCP guide](https://code.claude.com/docs/en/mcp).
+
+**Claude Desktop:** setup merges `mcpServers.web64` into
+`%APPDATA%\Claude\claude_desktop_config.json` on Windows or
+`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS.
+Unrelated settings and servers are retained, and the original file is backed up.
+Fully quit and reopen Claude. This local route is for the desktop application;
+it is not the Claude web application's remote connector form.
+[MCP's Claude Desktop configuration guide](https://py.sdk.modelcontextprotocol.io/get-started/real-host/).
+
+### Check or repair setup
+
+From the bridge folder, use `node setup.mjs --client codex --check` (substitute
+`claude-code` or `claude-desktop`). This installs nothing and changes no client
+settings. For Claude Code it checks that the named entry exists; `/mcp` is the
+client's final connection check. Run without `--check` to register a missing entry.
+Codex and Claude Desktop repeat setup without changes when already registered
+with the same executable and bridge path. Conflicting entries are not replaced.
+
+If a config file is malformed, setup reports its path and stops before writing.
+If a conflicting Web64 registration exists, remove that entry in client settings
+and rerun setup; for Claude Code use `claude mcp remove --scope user web64`.
+Setup backups have `.web64-backup-<id>` appended to the original filename.
+To undo registration, remove only the `web64` entry or restore the backup while
+the client is closed. If you move the bridge folder or reinstall Node at another
+path, remove the old registration and rerun setup from the new location.
+
+### Preparing the download (maintainers)
+
+Run `npm run bundle:setup` to produce the setup ZIP under `dist/`. It stages only
+the distributable files, installs pinned runtime dependencies, verifies a real
+stdio handshake, and includes those dependencies in the ZIP. It does not change
+versions, publish npm packages or deploy Web64. A developer's smoke-installed
+self-dependency is excluded from the staged package without editing the checkout.
+An existing ZIP is never overwritten; move it aside before rebuilding. macOS/Linux
+maintainers need `zip`; Windows uses the built-in `Compress-Archive` command.
+
+## Manual install / start
 
 Initial release version: **v0.1.0**. M6 external-client verification passed;
 no npm publication or hosted frontend deployment is implied by this version.
