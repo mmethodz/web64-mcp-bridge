@@ -1,0 +1,35 @@
+{
+  "name": "web64-mcp-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Opt-in local MCP adapter for the Web64 browser IDE",
+  "files": [
+    "src",
+    "README.md",
+    "compatibility.json",
+    "vendor/web64-mcp-contract-0.1.0.tgz"
+  ],
+  "bundleDependencies": [
+    "@web64/mcp-contract"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "web64-mcp-bridge": "./src/cli.mjs"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/node": "2.0.0",
+    "@modelcontextprotocol/server": "2.0.0",
+    "@web64/mcp-contract": "file:vendor/web64-mcp-contract-0.1.0.tgz",
+    "ws": "8.21.3",
+    "zod": "4.3.6"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/client": "2.0.0"
+  }
+}

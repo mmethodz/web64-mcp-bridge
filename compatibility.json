@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "bridgeVersion": "0.1.0",
+  "contractVersion": "0.1.0",
+  "nodeMinimum": "22",
+  "mcpProtocolVersions": ["2026-07-28", "2025-11-25"],
+  "transports": ["stdio", "streamable-http"],
+  "browserWires": {"capabilities": 1, "read": 2, "authoring": 3, "build": 4},
+  "buildContract": "web64-native-target-build-v1",
+  "projectCodecVersion": 4,
+  "browserCompatibility": "Require the browser capability echo; Web64 version alone does not grant capabilities.",
+  "productionKnowledgeBinding": "embedded-immutable-manifest",
+  "developmentKnowledgeBinding": "unattested; public scope must be explicit",
+  "cloud": false,
+  "emulatorExecution": false,
+  "verification": {"M0ThroughM5": "passed", "M6": "passed", "date": "2026-09-13"}
+}
