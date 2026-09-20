@@ -106,9 +106,12 @@ export function serverFactory(pairing, clientId, knowledge) {
       ])).min(1).max(128) }).strict()
     }, command('apply'));
     server.registerTool('web64_project_create', {
-      description: 'Create through an existing native IDE template and exact version. Requires project:write and no unsaved work in the granted tab; no force discard. Returns the new epoch. No automatic save, Cloud or execution.',
+      description: 'Inspect or create through the browser native portable-template pipeline. Choose exactly one source: bundled templateId + exact templateVersion, OR a completed web64_transfer uploadId containing .web64template JSON. options accepts declared text/number/boolean/select/multiselect answers. mode inspect validates without replacing even a dirty workspace. mode apply (default) creates Stock with no unsaved work and returns the new epoch. Uploaded templates are inspection-only: apply returns user_action_required; the user installs into My Templates in Cloud through the IDE. Requires project:write. Read schemas/web64template/1 and the Template Authoring guide through knowledge discovery. No force discard, automatic save, Cloud access or execution.',
       annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
-      inputSchema: z.object({ ...operation, templateId: z.string().max(64), templateVersion: z.number().int().positive(), options: nativeObject.optional() }).strict()
+      inputSchema: z.object({ ...operation, templateId: z.string().min(1).max(64).optional(), templateVersion: z.number().int().positive().optional(),
+        uploadId: z.string().min(1).max(128).optional(), mode: z.enum(['inspect', 'apply']).optional(), options: nativeObject.optional() }).strict()
+        .refine(value => value.uploadId !== undefined ? value.templateId === undefined && value.templateVersion === undefined
+          : value.templateId !== undefined && value.templateVersion !== undefined, 'Choose bundled identity/version OR a staged upload')
     }, command('create'));
     server.registerTool('web64_project_save', {
       description: 'Explicit native .web64proj save. export returns a private artifact, persisted:false; read its chunks with web64_transfer. handle writes only an existing already-permitted browser file handle, otherwise user_action_required. Never opens a picker, downloads automatically, calls Cloud, builds or runs. Retry the same operation ID to reconcile, not a new ID.',

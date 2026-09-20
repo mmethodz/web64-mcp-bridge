@@ -1,7 +1,8 @@
 {
   "schemaVersion": 1,
-  "bridgeVersion": "0.1.2",
-  "contractVersion": "0.1.1",
+  "bridgeVersion": "0.1.3",
+  "contractVersion": "0.1.2",
+  "portableTemplateFormatVersion": 1,
   "nodeMinimum": "22",
   "mcpProtocolVersions": ["2026-07-28", "2025-11-25"],
   "transports": ["stdio", "streamable-http"],

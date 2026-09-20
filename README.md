@@ -1,9 +1,11 @@
-# Web64 MCP bridge v0.1.2
+# Web64 MCP bridge v0.1.3
 
-Version **0.1.2** adds separately approved emulator capture/control/input and the
-IDE's native table/matrix generator. It retains guided setup for Codex and Claude,
+Version **0.1.3** adds portable template inspection and published template-format
+guidance. It retains separately approved emulator capture/control/input, the
+IDE's native table/matrix generator, guided setup for Codex and Claude,
 prerequisite/startup checks, safe registration and a dependency-included setup ZIP.
-The shared contract is v0.1.1 (runtime wire 5); browser approval is still required.
+The shared contract is v0.1.2 (runtime wire 5); browser approval is still required.
+Use Web64 IDE v2.4.4 or newer for the template inspection fields.
 
 Connect Codex or Claude to the [Web64 IDE](https://web64.nofs.ai/ide/) to read,
 author and build native Web64 projects, and look up SDK documentation and asset
@@ -19,7 +21,7 @@ browser project. You approve that separately in Web64.
 
 ## Easy setup: Codex and Claude
 
-Download the **`web64-mcp-bridge-0.1.2-setup.zip`** asset from
+Download the **`web64-mcp-bridge-0.1.3-setup.zip`** asset from
 [GitHub Releases](https://github.com/mmethodz/web64-mcp-bridge/releases) when
 available, or use the setup ZIP supplied by the maintainer. Extract it into a
 permanent folder you can write to, such as `Documents\Web64-Bridge`, then run setup:
@@ -193,7 +195,7 @@ is recorded in `package.json`; it is separate from the Web64 IDE version.
 From an empty installation directory, install the maintainer-provided archive:
 
 ```sh
-npm install --omit=dev /path/to/web64-mcp-bridge-0.1.2.tgz
+npm install --omit=dev /path/to/web64-mcp-bridge-0.1.3.tgz
 node node_modules/web64-mcp-bridge/src/cli.mjs --help
 ```
 
@@ -339,8 +341,34 @@ Request `{"action":"begin_pairing","scope":"project:write"}` and approve
 **Allow project editing** in the selected IDE. This creates a new explicit
 read/write grant; it never upgrades an existing read-only connection.
 
-`web64_project_create` accepts a native template ID and exact version, and refuses
-to discard unsaved work. `web64_project_apply` submits a bounded atomic batch of
+`web64_project_create` accepts a native stock template ID and exact version, and refuses
+to discard unsaved work. `mode: "inspect"` validates a detached candidate without
+replacing even a dirty project. `mode: "apply"` (the compatible default) creates
+from Stock. Both require an explicit project-editing grant.
+
+For an external `.web64template`, stage UTF-8 bytes with `web64_transfer`
+begin/chunk/finish and pass **only `uploadId`**, `mode: "inspect"`, and optional
+`options` answers to `web64_project_create`. The browser uses the same native
+validator as the UI. Text, number, boolean, select and multiselect answers retain
+their JSON types. Inspection returns `templateFormatVersion: 1`, validated options
+and a bounded output summary, not proof of build/run. Full questions live in the
+original artifact or the stock knowledge manifest.
+
+External installation is user-driven: **Import to My Templates** stores the file
+in the user's Cloud account (Free: 5, paid: 20; storage quotas apply). It does not
+install into browser storage. Staged `mode: "apply"` returns
+`user_action_required`; MCP never bypasses Cloud installation or gains Cloud
+credentials. Stock remains account-free. Marketplace is future work.
+
+Retrieve `schemas/web64template/1` using public knowledge discovery, or read the
+[Template Authoring guide](https://web64.nofs.ai/docs/web64-template-format.html)
+and its linked schema bundle. Parameters define the inputs; `variants[].project`
+contains complete native project objects; optional literal substitutions only
+touch named authored text files. There is no arbitrary script or new build path.
+Use a fresh operation ID between inspect and apply, the current workspace token,
+and identical IDs/arguments only for retries. Restart the bridge after updating.
+
+`web64_project_apply` submits a bounded atomic batch of
 native file records and typed compiler/build/media configuration changes. Both
 require a caller operation UUID and the current `workspaceToken` as `expected`.
 The browser validates, checks the revision again and publishes; the bridge does

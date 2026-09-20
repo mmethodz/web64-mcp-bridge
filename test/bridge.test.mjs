@@ -92,6 +92,25 @@ test('runtime wire consent, read-scope isolation, generator routing and MCP PNG 
   assert.equal((await client.callTool({ name: 'web64_runtime', arguments: { action: 'status' } })).structuredContent.error.code, 'session_unavailable');
 });
 
+test('portable template inspect fields traverse the real SDK/bridge with explicit write scope', async t => {
+  const fixture = await setup(t), client = await httpClient(t, fixture, '2026-07-28');
+  let received;
+  await peer(t, fixture.pairing.begin('a', 'project:write').url, { capabilities: browserCapabilities(null, true, true),
+    reply: message => { if (message.method !== 'project.command') return;
+      received = message.params; return { ok: true, value: { templateFormatVersion: 1, applied: false } }; } });
+  const operation = { operationId: crypto.randomUUID(), expected: { sessionId: 'one', epoch: 'epoch', generation: 0 } };
+  const args = { ...operation, uploadId: 'staged-template', mode: 'inspect', options: { title: 'Demo', count: 2, sound: false, mode: 'pal', parts: ['art'] } };
+  const result = await client.callTool({ name: 'web64_project_create', arguments: args });
+  assert.equal(result.structuredContent.value.templateFormatVersion, 1);
+  assert.deepEqual(received, { action: 'create', input: args });
+  const invalid = await client.callTool({ name: 'web64_project_create', arguments: { ...args, templateId: 'also-bundled', templateVersion: 1 } });
+  assert.equal(invalid.isError, true);
+  fixture.pairing.disconnect('a');
+  await peer(t, fixture.pairing.begin('a', 'project:read').url, { capabilities: browserCapabilities(null, true) });
+  const denied = await client.callTool({ name: 'web64_project_create', arguments: args });
+  assert.equal(denied.structuredContent.error.code, 'scope_denied');
+});
+
 test('authenticated M1 browser echo carries release identity but cannot extend the method set', async t => {
   const { pairing } = await setup(t);
   const knowledge = { schema: 'web64.public-knowledge-release', version: 1, release: 'a'.repeat(64),
