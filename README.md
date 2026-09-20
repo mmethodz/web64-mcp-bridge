@@ -66,6 +66,8 @@ Open the invitation and explicitly approve the requested emulator access.
 Older read/edit/build connections cannot silently acquire it. The updated Web64
 browser deployment is required; reload/save your work before re-pairing after an update.
 
+That's it — you're ready to use Web64 with your AI client. Everything below is advanced/reference documentation and is not required for normal use.
+
 `web64_runtime` accepts these actions:
 
 | Action | Meaning |
