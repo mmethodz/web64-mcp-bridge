@@ -352,7 +352,7 @@ For an external `.web64template`, stage UTF-8 bytes with `web64_transfer`
 begin/chunk/finish and pass **only `uploadId`**, `mode: "inspect"`, and optional
 `options` answers to `web64_project_create`. The browser uses the same native
 validator as the UI. Text, number, boolean, select and multiselect answers retain
-their JSON types. Inspection returns `templateFormatVersion: 1`, validated options
+their JSON types. Inspection returns `templateFormatVersion` (1, 2 or 3, as supported by the connected IDE), validated options
 and a bounded output summary, not proof of build/run. Full questions live in the
 original artifact or the stock knowledge manifest.
 
@@ -362,11 +362,16 @@ install into browser storage. Staged `mode: "apply"` returns
 `user_action_required`; MCP never bypasses Cloud installation or gains Cloud
 credentials. Stock remains account-free. Marketplace is future work.
 
-Retrieve `schemas/web64template/1` using public knowledge discovery, or read the
+Retrieve `schemas/web64template/1`, `/2` or `/3` using current public knowledge discovery, or read the
 [Template Authoring guide](https://web64.nofs.ai/docs/web64-template-format.html)
 and its linked schema bundle. Parameters define the inputs; `variants[].project`
 contains complete native project objects; optional literal substitutions only
-touch named authored text files. There is no arbitrary script or new build path.
+touch named authored text files. V2 adds bounded conditional/loop rendering. V3
+adds `generate` nodes for the IDE's native table/matrix presets, with constants
+or typed parameter bindings. The output is normal editable ASM/C source; no
+arbitrary formulas, host execution or new build path. The browser owns generation,
+so this needs no bridge protocol change. Use a current IDE and Cloud API supporting
+v3; the bridge does not upgrade an older connected browser's capabilities.
 Use a fresh operation ID between inspect and apply, the current workspace token,
 and identical IDs/arguments only for retries. Restart the bridge after updating.
 
