@@ -1,5 +1,23 @@
 # Web64 MCP bridge v0.1.3
 
+## C64 Ultimate device-only candidate (hardware testing pending)
+
+The same distribution now includes a **separate** `web64-device-bridge` command for explicit transfer/run from Web64 IDE to a C64 Ultimate on a private LAN. This path does **not** require an MCP client, an AI account or Web64 Cloud, and it does not expose hardware control through MCP. Physical C64U firmware behavior is not yet qualified; this is a remote-test candidate, not a general hardware-support claim.
+
+For the candidate, use Node.js 22 or newer and an extracted bridge setup/source directory with its bundled or installed dependencies. Enable the C64U HTTP API and TCP DMA service according to your device's own settings, then run the device command from that directory:
+
+```text
+node src/device-cli.mjs --device 192.168.1.42 --ide-url https://web64.nofs.ai/ide/
+```
+
+Replace the address with your own C64U's private-LAN address or LAN hostname. Do not paste a device password into the command line or a project file. If required, provide `WEB64_C64U_PASSWORD` to the bridge process environment; it is removed from that process environment after startup and is not saved by Web64. The command does not scan the LAN or change the C64U configuration. For a locally served development IDE only, add `--ide-url http://127.0.0.1:5173/ide/ --allow-local-ide`; this is not the hosted verification path.
+
+Set `WEB64_C64U_PASSWORD` only when the C64U has a network password, and use exactly that password: the HTTP API ignores an unneeded password, but the TCP DMA service then rejects it and REU launches report `dma_auth_rejected`. REU launches also need the TCP DMA service (port 64) enabled; preflight reports `dma_service_unavailable` before changing the machine when it is not reachable. CPU Speed may be anything while Turbo Control is Off; with turbo enabled it must be 1 MHz. An approved device grant lasts 20 minutes; the IDE shows when it ends, and `invite` starts a new pairing. A grant that expires during a transfer is kept until that job settles.
+
+Keep the terminal running. It prints a short-lived, one-use invitation URL. Open that URL in the same browser as Web64 IDE, accept the browser local-network permission if requested, then explicitly approve **inspect + execute** under **Settings → Devices**. In **Disk/Media → Launch Profiles**, choose an active launch and use **Run on C64U**. F5 always remains the local emulator run. Type `invite` for a fresh link, `status` for the connector state, or `quit` to close it. Disconnect in the IDE to revoke the browser grant. Browser approval is independent of the device's network password.
+
+Hardware execution can replace a running program and selected temporary media. Back up valuable data first. A transfer timeout after any device write has an **unknown** outcome, not an automatic failure that is safe to retry blindly. Inspect the visible job state and the machine before another run. The IDE reports transfer and guest handoff, not a fabricated application-start acknowledgment. See the Web64 repository's `docs/c64u-remote-tester-brief.md` and `docs/c64u-remote-report-template.md` for bounded acceptance steps. Do not deploy this candidate as verified C64U support until remote hardware results pass.
+
 Version **0.1.3** adds portable template inspection and published template-format
 guidance. It retains separately approved emulator capture/control/input, the
 IDE's native table/matrix generator, guided setup for Codex and Claude,

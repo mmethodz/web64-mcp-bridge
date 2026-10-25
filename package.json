@@ -21,7 +21,8 @@
     "node": ">=22"
   },
   "bin": {
-    "web64-mcp-bridge": "./src/cli.mjs"
+    "web64-mcp-bridge": "./src/cli.mjs",
+    "web64-device-bridge": "./src/device-cli.mjs"
   },
   "scripts": {
     "bundle:setup": "node scripts/build-setup-bundle.mjs",
@@ -33,7 +34,6 @@
     "@modelcontextprotocol/server": "2.0.0",
     "@web64/mcp-contract": "file:vendor/web64-mcp-contract-0.1.2.tgz",
     "smol-toml": "1.8.0",
-    "web64-mcp-bridge": "file:web64-mcp-bridge-0.1.0.tgz",
     "ws": "8.21.3",
     "zod": "4.3.6"
   },

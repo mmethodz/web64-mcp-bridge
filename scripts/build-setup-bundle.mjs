@@ -7,6 +7,11 @@ import { findExecutable, runCommand, probeBridge, launchEntry } from '../src/set
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
+const suffixOption = process.argv.indexOf('--suffix');
+const suffix = suffixOption < 0 ? '' : process.argv[suffixOption + 1];
+if (suffixOption >= 0 && !/^[a-z0-9][a-z0-9-]{1,39}$/u.test(suffix || '')) {
+  throw Error('Use --suffix with a short lowercase release-candidate label.');
+}
 const stage = await mkdtemp(join(tmpdir(), 'web64-download-'));
 const folder = join(stage, 'web64-mcp-bridge');
 await mkdir(folder);
@@ -29,7 +34,7 @@ await chmod(join(folder, 'setup.command'), 0o755);
 await probeBridge(launchEntry(process.execPath, folder));
 const output = resolve(root, 'dist');
 await mkdir(output, { recursive: true });
-const archive = join(output, `web64-mcp-bridge-${pkg.version}-setup.zip`);
+const archive = join(output, `web64-mcp-bridge-${pkg.version}${suffix ? `-${suffix}` : ''}-setup.zip`);
 // Never silently overwrite an earlier download artifact.
 try { await readFile(archive); throw Error(`Archive already exists: ${archive}. Move it aside before rebuilding.`); }
 catch (error) { if (error.code !== 'ENOENT') throw error; }

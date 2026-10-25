@@ -1,5 +1,15 @@
 # Web64 MCP bridge changelog
 
+## Unreleased
+
+- C64 Ultimate preflight now reads CPU Speed as the firmware's REST API reports it (raw option text such as `" 1"`, not `"1 MHz"`) and accepts any CPU Speed while Turbo Control is Off. Previously every Run on C64U failed preflight with `cpu_not_standard`.
+- REU launches check the TCP DMA service (port 64) and its password during preflight, before the device is reset or written; failures report `dma_service_unavailable` or `dma_auth_rejected`.
+- Unknown drive-list entries no longer block every launch; an unknown entry that occupies IEC unit 8/9 is still reported as a conflict.
+- Network failures report specific codes (`device_connection_refused`, `device_unreachable`, `device_connect_timeout`, ...) instead of `device_request_failed`. HTTP connects time out after 5 s.
+- A failed or timed-out upload closes its staged file, so Windows cleanup no longer replaces the real error with `staging_cleanup_failed`.
+- Job-state errors on `job.commit`/`job.status` are returned as errors instead of closing the pairing. An expired grant answers `device_session_expired` and is not revoked while its job is transferring or releasing the guest.
+- Disk bootstraps report a LOADING phase after release, so a slow KERNAL load counts as an observed guest handoff (`guestPhase: "loading"`). Mailbox polling is 250 ms instead of 50 ms.
+
 ## 0.1.3 — 2026-09-19
 
 - Native portable-template inspection through `web64_project_create`: inspect bundled templates or a completed `.web64template` upload with all five bounded parameter types. Default stock creation remains compatible.
